@@ -56,6 +56,10 @@ body{
   box-shadow:0 2px 0 rgba(0,0,0,.06); border:1px solid #eee;
   font-size:13px;
 }
+.btn.active{
+  background: rgba(0,0,0,0.15);
+}
+
 .icon{
   padding:6px 10px;
   display:flex;
@@ -3807,99 +3811,131 @@ const fsSaveBtn   = document.getElementById('fsSave');
 const fsPostBtn   = document.getElementById('fsPost');
 const fsSpeedSelect = document.getElementById('fsSpeed');
 
-// ★ 1ページ分の自動再生処理
+// 「前」「次」は押している間だけハイライト
+[fsPrev, fsNext].forEach(btn => {
+  if (!btn) return;
+  const add = ()=>btn.classList.add('active');
+  const rm  = ()=>btn.classList.remove('active');
+
+  btn.addEventListener('mousedown', add);
+  btn.addEventListener('mouseup',   rm);
+  btn.addEventListener('mouseleave',rm);
+
+  btn.addEventListener('touchstart', add, {passive:true});
+  btn.addEventListener('touchend',   rm);
+  btn.addEventListener('touchcancel',rm);
+});
+
+// ★ 1ページ分の自動再生処理（完成絵＋音声 / おえかき再生＋音声 共通）
 function runFsAutoStep(){
   if (!autoPlaying) return;
 
-  const pageIndex = cur;
-  const sp       = spreads[pageIndex];
-  const mode     = fsMode;
+  const pageIndex = cur;              // 0: 表紙 … 最後: 裏表紙
+  const sp        = spreads[pageIndex];
+  const mode      = fsMode;           // 'final' or 'log'
 
-  // このページを再生（完成絵 or おえかき＋音声）
-  const audio = playForCurrentFSPage();  // audio要素 or null
+  if (!sp){
+    // 安全のため
+    stopAutoPlay(true);
+    return;
+  }
 
-  // 最後のページかどうか（裏表紙も含めて最後とみなす）
-  function advanceFromThisPage(){
+  // このページの再生を開始（完成絵 or おえかき＋音声）
+  // ここで描画やログ再生もまとめて始まる
+  const audio = playForCurrentFSPage();  // HTMLAudioElement か null
+
+  // ページ送り共通処理
+  function goNextPage(){
     if (!autoPlaying) return;
-    if (cur !== pageIndex) return; // 途中で手動でページ移動した場合は無視
+    if (cur !== pageIndex) return;   // 手動でページを動かされたら無視
 
     if (pageIndex >= spreads.length - 1){
-      // 最終ページを再生し終えたので停止
-      stopAutoPlay();
+      // 裏表紙まで再生し終えた
+      stopAutoPlay(true);            // ★ ここで録画停止 → 保存ボタン有効化
       return;
     }
-    // 次のページへ進んで、次のステップへ
+
     fsGoToPage(pageIndex + 1);
-    runFsAutoStep();
+    runFsAutoStep();                 // 次のページも同じロジックで
   }
 
+  // ===== 1) 完成絵＋音声モード =====
   if (mode === 'final'){
-    // ===== 完成絵＋音声モード =====
     if (audio){
-      // 音声があれば、その終了を待って次へ
-      audio.onended = ()=> {
-        advanceFromThisPage();
+      // 音声がある → 終了したら次ページへ
+      audio.onended = () => {
+        audio.onended = null;
+        goNextPage();
       };
     } else {
-      // 音声がない場合は2秒だけ見せて次のページへ
-      setTimeout(()=>{
-        advanceFromThisPage();
+      // 音声がない → 2秒だけ表示して次へ
+      setTimeout(() => {
+        goNextPage();
       }, 2000);
     }
-  } else {
-    // ===== おえかき再生＋音声モード (fsMode === 'log') =====
-    let drawDurMs = 0;
+    return;
+  }
 
-    if (sp){
-      const s = (typeof sp.playStart === 'number') ? sp.playStart : 0;
-      let   e = (typeof sp.playEnd   === 'number') ? sp.playEnd   :
-                (typeof sp.pageTimeMax === 'number' ? sp.pageTimeMax : s);
+  // ===== 2) おえかき再生＋音声モード (fsMode === 'log') =====
 
-      if (e < s) e = s;
+  // 再生開始・終了位置から「描画の再生時間」を fsLogSpeed に応じて計算
+  let drawDurMs = 0;
+  if (sp){
+    const s = (typeof sp.playStart === 'number') ? sp.playStart : 0;
+    let   e = (typeof sp.playEnd   === 'number')
+                ? sp.playEnd
+                : (typeof sp.pageTimeMax === 'number' ? sp.pageTimeMax : s);
 
-      const speed = fsLogSpeed || 1;
-      drawDurMs = (e - s) / speed * 1000;  // ミリ秒
+    if (e < s) e = s;
+
+    const speed = fsLogSpeed || 1;
+    drawDurMs = (e - s) / speed * 1000;   // ミリ秒
+  }
+
+  // 「音声」「描画」どちらが長いかにあわせて次ページへ進む
+  let audioDone = !audio;
+  let drawDone  = (drawDurMs <= 0);
+  let finished  = false;
+
+  function tryAdvance(){
+    if (finished) return;
+    if (!autoPlaying) return;
+    if (cur !== pageIndex) return;
+
+    if (audioDone && drawDone){
+      finished = true;
+      goNextPage();
     }
+  }
 
-    let audioDone = !audio;
-    let drawDone  = drawDurMs <= 0;
-    let advanced  = false;
+  // 音声側：終わったらフラグを立てる
+  if (audio){
+    audio.onended = () => {
+      audio.onended = null;
+      audioDone = true;
+      tryAdvance();
+    };
+  }
 
-    function tryAdvance(){
-      if (advanced) return;
-      if (!autoPlaying) return;
-      if (cur !== pageIndex) return;
+  // 描画側：計算した時間だけ待つ
+  if (drawDurMs > 0){
+    setTimeout(() => {
+      drawDone = true;
+      tryAdvance();
+    }, drawDurMs);
+  }
 
-      if (audioDone && drawDone){
-        advanced = true;
-        advanceFromThisPage();
-      }
-    }
-
-    if (audio){
-      audio.onended = ()=>{
-        audioDone = true;
-        tryAdvance();
-      };
-    }
-
-    if (drawDurMs > 0){
-      setTimeout(()=>{
-        drawDone = true;
-        tryAdvance();
-      }, drawDurMs);
-    } else if (!audio){
-      // 音声も描画もほぼないページ → 2秒見せて次へ
-      setTimeout(()=>{
-        audioDone = true;
-        drawDone  = true;
-        tryAdvance();
-      }, 2000);
-    } else {
-      // 音声だけある（描画時間0） → 音声終了で遷移（audio.onended側で処理）
-    }
+  // 音声も描画も実質ゼロの場合は、保険で2秒待ってから進む
+  if (!audio && drawDurMs <= 0){
+    setTimeout(() => {
+      audioDone = true;
+      drawDone  = true;
+      tryAdvance();
+    }, 2000);
   }
 }
+
+
 
 // ★ 保存ボタンの動作：録画済みの動画をダウンロード
 if (fsSaveBtn){
@@ -3943,90 +3979,74 @@ if(fsSpeedSelect){
   });
 }
 
-fsPrev.onclick=()=>{ prevPageFS(); };
-fsNext.onclick=()=>{ nextPageFS(); };
+fsPrev.onclick = ()=>{ prevPageFS(); };
+fsNext.onclick = ()=>{ nextPageFS(); };
 
-
+// ★ 読み聞かせモードの自動再生開始
 function startAutoPlay(){
-  if (autoPlaying) return;   // 二重起動防止
+  if (autoPlaying) return;
+
   autoPlaying = true;
+  fsAuto.textContent = '⏹ 自動停止';
+  fsAuto.classList.add('active');   // ボタンをハイライト
 
-  // ★ すでに表紙などの音声が再生中なら、その Audio に onended だけ付ける
-  //    まだ何も再生していない場合だけ playForCurrentFSPage() で再生を開始する
-  function attachAndMaybePlay(a){
-    if (!a){
-      // このページに音声がないときはすぐ次のページへ
-      if (cur < spreads.length - 1){
-        nextPageFS();
-      } else {
-        stopAutoPlay(true);
-      }
-      return;
+  // 必ず表紙からスタート
+  fsGoToPage(0);
+  drawFS();
+
+  // ── 録画の準備 ──
+  if (!fsMediaRecorder){
+    setupFsRecorder?.();
+  }
+  if (fsAudioCtx && fsAudioCtx.state === 'suspended'){
+    fsAudioCtx.resume().catch(()=>{});
+  }
+  if (fsMediaRecorder && fsMediaRecorder.state === 'inactive'){
+    fsRecordedChunks = [];
+    fsLastVideoBlob  = null;
+    if (fsSaveBtn) fsSaveBtn.disabled = true;
+    if (fsPostBtn) fsPostBtn.disabled = true;
+    try{
+      fsMediaRecorder.start();
+    }catch(e){
+      console.error(e);
     }
-
-    a.onended = ()=>{
-      if (!autoPlaying) return;
-
-      if (cur < spreads.length - 1){
-        // 次のページへ → nextPageFS 内で autoPlaying が true なら
-        // 再び playForCurrentFSPage() + onended セットが行われる
-        nextPageFS();
-      } else {
-        // 最終ページの音声が終わったら自動再生終了
-        stopAutoPlay(true);
-      }
-    };
   }
 
-  if (currentAudio){
-    // すでに表紙などを再生中なら、その Audio にだけ onended を付与
-    attachAndMaybePlay(currentAudio);
-  } else {
-    // まだ何も再生していない場合はこのページの音声を再生開始
-    const a = playForCurrentFSPage();
-    attachAndMaybePlay(a);
-  }
+  // 1ページ目（表紙）から自動再生スタート
+  runFsAutoStep();
 
-  logAction('fsAutoPlayStart', { page: cur + 1, mode: fsMode });
+  logAction('fsAutoPlayStart',{page:cur+1, mode:fsMode, fromCover:true});
 }
 
-
-function scheduleNextFinalPage(){
-  if (fsFinalTimerId) clearTimeout(fsFinalTimerId);
-  fsFinalTimerId = setTimeout(()=>{
-    if(!autoPlaying) return;
-
-    if(cur < spreads.length - 1){
-      fsGoToPage(cur+1);
-      playForCurrentFSPage();  // 次のページも1秒だけ音を流す
-      scheduleNextFinalPage();
-    }else{
-      // 裏表紙まで到達
-      stopAutoPlay(true);
-    }
-  }, 1000); // 1秒ごとに次ページへ
-}
-
+// ★ 自動再生の停止
 function stopAutoPlay(finished = false){
-  if(!autoPlaying) return;
+  if (!autoPlaying) return;
 
   autoPlaying = false;
   fsAuto.textContent = '⏯ 自動再生';
-
-  if (fsFinalTimerId){
-    clearTimeout(fsFinalTimerId);
-    fsFinalTimerId = null;
-  }
+  fsAuto.classList.remove('active');   // ハイライト解除
 
   stopCurrentAudio();
 
-  // 録画停止
+  // 録画停止（fsMediaRecorder.onstop 内で fsLastVideoBlob が作成され、
+  // 「保存」「投稿」ボタンが有効になる前提）
   if (fsMediaRecorder && fsMediaRecorder.state === 'recording'){
-    fsMediaRecorder.stop();  // onstop 内で fsLastVideoBlob が生成される
+    fsMediaRecorder.stop();
   }
 
   logAction('fsAutoPlayStop',{page:cur+1, finished});
 }
+
+// ★ 自動再生ボタンのトグル
+fsAuto.onclick = ()=>{
+  if (autoPlaying){
+    stopAutoPlay(false);
+  } else {
+    startAutoPlay();
+  }
+};
+
 
 fsAuto.onclick = ()=>{
   if(autoPlaying){
