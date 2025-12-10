@@ -362,14 +362,36 @@ canvas{display:block;touch-action:none}
 <div class="palette">
   <!-- グリップ（キャンバス平行移動ツール） -->
   <button id="panGrip" class="btn icon" title="キャンバスをつかんで動かす">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 5v5" />
-      <path d="M11 4v6" />
-      <path d="M14 5v6" />
-      <path d="M17 8v5" />
-      <path d="M6.5 11c-1 1-1.5 2.3-1.5 3.5 0 2.6 2.1 4.9 5.5 4.9h3c2.1 0 3.5-1.5 3.5-3.5 0-1.1-.2-1.9-.7-2.7" />
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="2.2"
+         stroke-linecap="round"
+         stroke-linejoin="round">
+  
+      <!-- さらに縮小したスケール＆余白調整版 -->
+  
+      <path d="M 3 9 A 1.8 1.8 0 0 1 6.2 9" />
+      <path d="M 6.2 3 A 1.8 1.8 0 0 1 9.4 3" />
+      <path d="M 9.4 2.2 A 1.8 1.8 0 0 1 12.6 2.2" />
+      <path d="M 12.6 3 A 1.8 1.8 0 0 1 15.8 3" />
+      <path d="M 15.8 4.2 A 1.44 1.44 0 0 1 18.4 4.2" />
+  
+      <path d="M 9.4 2.2 L 9.4 2.2" />
+      <path d="M 9.4 2.2 L 9.4 8.5" />
+      <path d="M 12.6 2.2 L 12.6 8.5" />
+      <path d="M 15.8 3 L 15.8 8.5" />
+      <path d="M 18.4 4.2 L 18.4 18" />
+      <path d="M 6.2 3 L 6.2 13.6" />
+  
+      <path d="M 10.8 19.2 Q 9.8 14.6 6.2 13.6" />
+      <path d="M 3 9 L 3 16" />
+      <path d="M 3 16 Q 6 22 12 22.1" />
+      <path d="M 12 22.1 Q 17.2 21.9 18.4 18" />
+  
     </svg>
   </button>
+  
   <!-- ★ Undoボタン -->
   <button id="btnUndo" class="btn icon" title="1つ前の状態に戻す（Undo）">
     <svg viewBox="0 0 24 24" aria-hidden="true">
