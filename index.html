@@ -511,19 +511,60 @@ canvas{display:block;touch-action:none}
   <span style="color:#000000;font-size:24px;margin:0 8px;">｜</span>
 
   <button id="pAdd" class="btn icon" title="この見開きの次に新しい見開きを追加">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-      <path d="M12 8v8"></path>
-      <path d="M8 12h8"></path>
+    <svg xviewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round">
+      <!-- 上部円弧と三角 -->
+      <path d="M 17.2 2.2 Q 9.7 -0.8 4.0 5.3" />
+      <path d="M 17.2 2.2 L 20.7 7.9" />
+      <path d="M 20.7 7.9 L 16.1 6.3" />
+      <path d="M 16.1 6.3 L 17.2 2.2" />
+      <!-- 左右の支柱 -->
+      <path d="M 4.0 5.3 L 4.0 19.5" />
+      <path d="M 20.7 7.9 L 20.7 18.3" />
+      <!-- 下部円弧 -->
+      <path d="M 20.7 18.3 Q 12.0 14.3 4.0 19.5" />
+      <!-- 中央の十字形 -->
+      <path d="M 8.1 10.2 L 8.1 10.8" />
+      <path d="M 8.1 10.8 L 11.4 10.8" />
+      <path d="M 11.4 10.8 L 11.4 14.1" />
+      <path d="M 11.4 14.1 L 12.0 14.1" />
+      <path d="M 12.0 14.1 L 12.0 10.8" />
+      <path d="M 12.0 10.8 L 15.3 10.8" />
+      <path d="M 15.3 10.8 L 15.3 10.2" />
+      <path d="M 15.3 10.2 L 12.0 10.2" />
+      <path d="M 12.0 10.2 L 12.0 7.0" />
+      <path d="M 12.0 7.0 L 11.4 7.0" />
+      <path d="M 11.4 7.0 L 11.4 10.2" />
+      <path d="M 11.4 10.2 L 8.1 10.2" />
+      <!-- 下部円弧 2 本目 -->
+      <path d="M 20.7 18.7 Q 12.0 14.7 4.0 20.0" />
     </svg>
   </button>
   <button id="pDel" class="btn icon" title="この見開きを削除">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 7h12"></path>
-      <path d="M10 7V5h4v2"></path>
-      <rect x="7" y="7" width="10" height="12" rx="1.5"></rect>
-      <path d="M10 11v5"></path>
-      <path d="M14 11v5"></path>
+    <svg viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.2"
+      stroke-linecap="round"
+      stroke-linejoin="round">
+      <!-- 上部円弧と三角 -->
+      <path d="M 17.2 2.2 Q 9.7 -0.8 4.0 5.3" />
+      <path d="M 17.2 2.2 L 20.7 7.9" />
+      <path d="M 20.7 7.9 L 16.1 6.3" />
+      <path d="M 16.1 6.3 L 17.2 2.2" />
+      <!-- 左右の支柱 -->
+      <path d="M 4.0 5.3 L 4.0 19.5" />
+      <path d="M 20.7 7.9 L 20.7 18.3" />
+      <!-- 下部円弧 -->
+      <path d="M 20.7 18.3 Q 12.0 14.3 4.0 19.5" />
+      <!-- 中央横線のみ（縦線なしの版） -->
+      <path d="M 8.1 10.8 L 15.3 10.8" />
+      <!-- 下部円弧 2 本目 -->
+      <path d="M 20.7 18.7 Q 12.0 14.7 4.0 20.0" />
     </svg>
   </button>
 
