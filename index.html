@@ -663,12 +663,18 @@ canvas{display:block;touch-action:none}
     <select id="brushMode">
       <option value="crayon" selected>クレヨン</option>
       <option value="watercolor">水彩</option>
+      <option value="calligraphy">カリグラフィー（強弱）</option>
     </select>
   </div>
   <div class="row" id="wcRow">
     <label>にじみ</label>
     <input type="range" id="wcWet" min="0" max="100" value="45">
     <span id="wcWetView">45%</span>
+  </div>
+  <div class="row" id="calligRow" style="display:none">
+    <label>角度</label>
+    <input type="range" id="calligAngle" min="0" max="180" value="45">
+    <span id="calligAngleView">45°</span>
   </div>
   <div class="row">
     <label>ペン色</label>
@@ -2160,14 +2166,34 @@ const brushModeSel=document.getElementById('brushMode');
 const wcRow=document.getElementById('wcRow');
 const wcWetInput=document.getElementById('wcWet');
 const wcWetView=document.getElementById('wcWetView');
+const calligRow=document.getElementById('calligRow');
+const calligAngleInput=document.getElementById('calligAngle');
+const calligAngleView=document.getElementById('calligAngleView');
+
 let brushMode='crayon';
 let wcWet=0.45;
 let mixMode=true;
+
+// ★ カリグラフィー設定
+let calligAngleDeg=45;
+let calligAngleRad=calligAngleDeg*Math.PI/180;
+calligAngleInput.oninput=(e)=>{
+  calligAngleDeg=+e.target.value;
+  calligAngleRad=calligAngleDeg*Math.PI/180;
+  calligAngleView.textContent=calligAngleDeg+'°';
+};
+
+function updateBrushUI(){
+  wcRow.style.display = (brushMode==='watercolor') ? 'flex' : 'none';
+  calligRow.style.display = (brushMode==='calligraphy') ? 'flex' : 'none';
+}
 brushModeSel.oninput=()=>{
   brushMode=brushModeSel.value;
-  wcRow.style.opacity=(brushMode==='watercolor')?1:.4;
+  updateBrushUI();
 };
 wcWetInput.oninput=(e)=>{ wcWet=(+e.target.value)/100; wcWetView.textContent=e.target.value+'%'; };
+updateBrushUI();
+
 
 let _wcTex=null;
 function makeWatercolorTexture(){
@@ -2219,6 +2245,47 @@ function stampWatercolor(ctx,x1,y1,x2,y2,color,size,wet){
   }
   ctx.restore();
 }
+function stampCalligraphy(ctx, x1, y1, x2, y2, color, size, nibAngleRad, pressure, speed, mix){
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+
+  const speedN = Math.min(1, Math.max(0, speed * 2.2));
+  const speedScale = 1.0 - 0.55 * speedN;
+
+  const p = Math.min(1.0, Math.max(0.15, pressure || 0.5));
+  const base = size * speedScale * (0.35 + 0.65 * p);
+
+  const dir = Math.atan2(dy, dx);
+  const a = dir - nibAngleRad;
+  const thickK = Math.abs(Math.sin(a)); // 0〜1
+
+  const rx = Math.max(0.6, base * 0.55);
+  const ry = Math.max(0.6, base * (0.10 + 0.55 * thickK));
+
+  const step = Math.max(0.6, base * 0.22);
+
+  ctx.save();
+  ctx.globalAlpha = mix ? 0.6 : 1.0;
+  ctx.fillStyle = color;
+
+  for(let d=0; d<=len; d+=step){
+    const t = d / len;
+    const px = x1 + dx * t;
+    const py = y1 + dy * t;
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(nibAngleRad);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.globalAlpha = 1.0;
+  ctx.restore();
+}
+
 function pos(canvas,e){
   const r=canvas.getBoundingClientRect();
   const src=e.touches?e.touches[0]:e.changedTouches?e.changedTouches[0]:e;
@@ -2253,6 +2320,8 @@ function line(x1,y1,x2,y2){
   }else{
     if(brushMode==='watercolor'){
       stampWatercolor(pc,x1,y1,x2,y2,penColor,penSize*1.25,wcWet);
+    }else if(brushMode==='calligraphy'){
+      stampCalligraphy(pc, x1, y1, x2, y2, penColor, penSize, calligAngleRad, drawPressure, drawSpeed, mixMode);
     }else{
       pc.globalAlpha = mixMode ? 0.6 : 1.0;
       pc.strokeStyle=penColor;
@@ -2267,6 +2336,19 @@ function line(x1,y1,x2,y2){
 
 
 let isDraw=false,lx=0,ly=0;
+let drawPressure = 0.5;
+let drawSpeed = 0.0; // px/ms
+let lastMoveTS = 0;
+
+function getPressureFromEvent(e){
+  // PointerEvent / Touch の pressure を安全に読む（無ければ0.5）
+  const pe = e;
+  const p = (pe && typeof pe.pressure === 'number') ? pe.pressure :
+            (e.touches && e.touches[0] && typeof e.touches[0].force === 'number') ? e.touches[0].force :
+            0.5;
+  return Math.min(1, Math.max(0.05, p));
+}
+
 function dStart(e){
   if(e.touches && e.touches.length>1) return;
   isDraw=true;
@@ -2282,7 +2364,12 @@ function dStart(e){
     pageNextTimeOverride[pageNo] = t;    // 次の logAction はこのページ時間から
   }
 
-  logAction('drawStart',{x:lx,y:ly,tool:tool,color:curColor,width:curWidth});
+  logAction('drawStart',{
+    x:lx,y:ly,
+    tool:(erasing?'eraser':'draw'),
+    brush:brushMode,
+    width:penSize
+  });
 }
 
 function dMove(e){
