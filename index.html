@@ -98,8 +98,11 @@ body{
 
 /* スポイトで取得した色のスウォッチ */
 .color-swatch{
+  box-sizing:border-box;
+  flex:0 0 auto;
   width:22px;
   height:22px;
+  transition:width .08s ease, height .08s ease;
   border-radius:999px;
   border:2px solid #ccc;
   box-shadow:0 1px 2px rgba(0,0,0,.15) inset;
@@ -213,7 +216,7 @@ canvas{display:block;touch-action:none}
 }
 #drawPanel.open{display:block}
 .row{display:flex;align-items:center;gap:10px;margin:6px 0}
-.row label{min-width:5em;color:#333;font-weight:700}
+.row label{min-width:5em;color:#333;font-weight:700;white-space:nowrap}
 
 /* ★ スタンプパネル */
 #stampPanel{
@@ -308,7 +311,13 @@ canvas{display:block;touch-action:none}
   position:absolute;inset:0;
 }
 #camOverlay{touch-action:none;}
-.camBtns{display:flex;gap:8px}
+.camBtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#camDropHint{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.55);color:#fff;font-size:18px;font-weight:700;z-index:6;
+  pointer-events:none;
+}
+#camDropHint.show{display:flex}
 .small{font-size:12px;font-weight:700;border:1px solid #e5e5e7}
 
 /* 映像設定パネル（カメラ内） */
@@ -354,6 +363,11 @@ canvas{display:block;touch-action:none}
 }
 #imgMenu button:hover{
   background:#f2f7ff;
+}
+#imgMenu .imgMenuSep{
+  height:1px;
+  background:#eee;
+  margin:4px 0;
 }
 </style>
 
@@ -411,6 +425,13 @@ canvas{display:block;touch-action:none}
   <span style="color:#000000;font-size:24px;margin:0 8px;">｜</span>
 
   <!-- ツール順：ペン → スポイト → 取得色 → 消しゴム → 設定 → 画像編集 → 画像読み込み → スタンプ → カメラ -->
+  <!-- ★ オブジェクト選択（矢印）ツール -->
+  <button id="mSelect" class="btn icon" title="オブジェクトをえらぶ（矢印）">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3l12.5 9.2-5.6 1L15.4 20l-2.6 1-2.5-6.4L6 18.6z"></path>
+    </svg>
+  </button>
+
   <button id="mDraw" class="btn icon" title="ペンでおえかき">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M4 20l3.5-0.5L19 8l-3-3L4.5 16.5 4 20z"></path>
@@ -499,7 +520,7 @@ canvas{display:block;touch-action:none}
     </svg>
   </button>
 
-  <button id="openCam" class="btn icon" title="カメラでなげなわ切り抜き">
+  <button id="openCam" class="btn icon" title="カメラ／画像でなげなわ切り抜き">
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <rect x="4" y="7" width="16" height="11" rx="2"></rect>
       <path d="M9 7l1.5-2h3L15 7"></path>
@@ -683,7 +704,9 @@ canvas{display:block;touch-action:none}
   <div class="row">
     <label>太さ</label>
     <input type="range" id="penSizeInput" min="2" max="60" value="10">
-    <span id="penSizeView">10px</span>
+    <input type="number" id="penSizeNum" min="2" max="60" step="1" value="10"
+           style="width:60px;padding:3px 4px;border:1px solid #ddd;border-radius:6px;text-align:right">
+    <span id="penSizeView" style="min-width:2em">px</span>
   </div>
   <div class="row">
     <label>背景色</label>
@@ -781,7 +804,10 @@ canvas{display:block;touch-action:none}
   <div class="camCard">
     <div class="camHead">
       <div class="camBtns">
-        <button id="camClose" class="btn small" title="カメラを閉じる">閉じる</button>
+        <button id="camClose" class="btn small" title="閉じる">閉じる</button>
+        <button id="camLoadImg" class="btn small" title="パソコン／タブレットの中の画像を読みこみます">画像をひらく</button>
+        <button id="camBackToCam" class="btn small" title="カメラの映像にもどります" style="display:none">カメラにもどる</button>
+        <input id="camImgInput" type="file" accept="image/*" style="display:none">
       </div>
       <div class="camBtns">
         <select id="camSelect" class="camSelect" title="使うカメラを選びます"></select>
@@ -792,6 +818,7 @@ canvas{display:block;touch-action:none}
       <video id="camVideo" playsinline autoplay muted></video>
       <canvas id="camView"></canvas>
       <canvas id="camOverlay"></canvas>
+      <div id="camDropHint">ここに画像をドロップ</div>
 
       <div class="camVideoPanel">
         <div class="title">映像設定</div>
@@ -816,6 +843,8 @@ canvas{display:block;touch-action:none}
         </label>
         <div style="margin-top:3px;white-space:normal;color:#ddd">
           ※なげなわで囲って指／マウスを離すと自動で切り抜いて貼り付けます。<br>
+          ※「画像をひらく」で保存してある写真やイラストからも切り抜けます。<br>
+          　（画像をこの画面にドラッグ＆ドロップ／貼り付けでもOK）<br>
           ※トゥーンONで教科書イラスト風の映像になります。
         </div>
       </div>
@@ -862,6 +891,9 @@ canvas{display:block;touch-action:none}
 
 <!-- 右クリックメニュー -->
 <div id="imgMenu">
+  <button data-act="front">いちばん上へ（前面）</button>
+  <button data-act="back">いちばん下へ（背面）</button>
+  <div class="imgMenuSep"></div>
   <button data-act="dup">複製</button>
   <button data-act="del">削除</button>
   <button data-act="paste">ペースト</button>
@@ -1620,6 +1652,13 @@ function clipCoverSquare(ctx){
 }
 
 
+/* ★ 追加：ページ（またはカバー）の形に切り抜く共通ヘルパ
+   → ノートの外にはみ出した画像・線が見切れるようになる */
+function clipToPageArea(ctx, pageType){
+  if(pageType==='cover' || pageType==='back') clipCoverSquare(ctx);
+  else clipToPages(ctx);
+}
+
 // ページ種別ごとの背景描画
 function drawBGForType(pageType){
   const w = W, h = H;
@@ -1855,7 +1894,8 @@ function cloneSpread(sp){
       cx: o.cx,
       cy: o.cy,
       scale: o.scale,
-      theta: o.theta
+      theta: o.theta,
+      kind: o.kind
     });
   }
   return cloned;
@@ -1976,6 +2016,7 @@ const panGrip          = document.getElementById('panGrip');
 const mDraw            = document.getElementById('mDraw');
 const mImg             = document.getElementById('mImg');
 const mStamp           = document.getElementById('mStamp');  // ★
+const mSelect          = document.getElementById('mSelect'); // ★ 矢印（選択）
 const eraserToggle     = document.getElementById('eraserToggle');
 const btnUndo          = document.getElementById('btnUndo');
 const btnExplode       = document.getElementById('btnExplode');
@@ -2074,6 +2115,7 @@ function updateToolHighlights(){
   mDraw.classList.toggle('on', mode === 'draw' && !erasing && !isEyedropperMode && !isPanMode);
   eraserToggle.classList.toggle('on', mode === 'draw' && erasing);
   mImg.classList.toggle('on', mode === 'edit');
+  if(mSelect) mSelect.classList.toggle('on', mode === 'edit');
   panGrip.classList.toggle('on', isPanMode);
   eyedropperBtn.classList.toggle('on', isEyedropperMode);
   mStamp.classList.toggle('on', mode === 'stamp');   // ★
@@ -2113,6 +2155,15 @@ openDrawPanelBtn.onclick=(e)=>{
   e.stopPropagation();
 };
 
+/* ★ 矢印（選択）ツール：えらぶだけ。描かない */
+if(mSelect){
+  mSelect.onclick=()=>{
+    hideDrawPanel();
+    setMode('edit');
+    logAction('toolSelect',{tool:'select'});
+  };
+}
+
 let penColor='#000000', penSize=10;
 function setSwatchColor(col){ pickedColorSwatch.style.background=col; }
 penColorInput.oninput=(e)=>{
@@ -2120,10 +2171,30 @@ penColorInput.oninput=(e)=>{
   setErase(false);
   setSwatchColor(penColor);
 };
-penSizeInput.oninput=(e)=>{ penSize=+e.target.value; penSizeView.textContent=penSize+'px'; };
+const penSizeNum = document.getElementById('penSizeNum');
+/* ★ 色ボタン（スウォッチ）の円の直径で線の太さを表す */
+function updateSwatchSize(){
+  const d = 10 + (penSize - 2) / (60 - 2) * 20;   // 10px 〜 30px
+  pickedColorSwatch.style.width  = d.toFixed(1) + 'px';
+  pickedColorSwatch.style.height = d.toFixed(1) + 'px';
+}
+/* ★ 太さの変更はここに集約（スライダー・数値・スポイト共通） */
+function setPenSize(v, from){
+  v = Math.round(Math.max(2, Math.min(60, (+v) || 2)));
+  penSize = v;
+  if(from !== 'range'  && penSizeInput) penSizeInput.value = v;
+  if(from !== 'number' && penSizeNum)   penSizeNum.value   = v;
+  updateSwatchSize();
+}
+penSizeInput.oninput = (e)=> setPenSize(e.target.value, 'range');
+if(penSizeNum){
+  penSizeNum.oninput  = (e)=> setPenSize(e.target.value, 'number');
+  penSizeNum.onchange = (e)=> setPenSize(e.target.value);
+}
 pageBgColor.oninput =()=>{ spreads[cur].tint.color=pageBgColor.value; drawTint(); };
 pageBgAlpha.oninput =()=>{ spreads[cur].tint.alpha=(+pageBgAlpha.value)/100; alphaView.textContent=pageBgAlpha.value+'%'; drawTint(); };
 setSwatchColor(penColor);
+setPenSize(penSize);
 
 pickedColorSwatch.addEventListener('click',()=>{
   hideDrawPanel();
@@ -2294,44 +2365,45 @@ function pos(canvas,e){
   const y=(cy-r.top)*(canvas.height/r.height);
   return {x,y};
 }
-function line(x1,y1,x2,y2){
-  pc.save();
+function line(x1,y1,x2,y2,targetCtx){
+  const ctx = targetCtx || pc;   // ★ 描き先を指定できるようにした
+  ctx.save();
 
   // ★ 表紙・裏表紙のときは正方形1枚、それ以外は見開き2ページにクリップ
   const spType = spreads[cur]?.type || 'normal';
   if (spType === 'cover' || spType === 'back') {
-    clipCoverSquare(pc);
+    clipCoverSquare(ctx);
   } else {
-    clipToPages(pc);
+    clipToPages(ctx);
   }
 
   if(erasing){
     const step=Math.max(1,penSize*0.32);
     const len=Math.hypot(x2-x1,y2-y1)||1;
-    pc.globalCompositeOperation='destination-out';
+    ctx.globalCompositeOperation='destination-out';
     for(let d=0;d<=len;d+=step){
       const px=x1+(x2-x1)/len*d, py=y1+(y2-y1)/len*d;
-      pc.beginPath(); pc.arc(px,py,penSize*0.5,0,Math.PI*2);
-      pc.fill();
+      ctx.beginPath(); ctx.arc(px,py,penSize*0.5,0,Math.PI*2);
+      ctx.fill();
       // ★ 画像にも同じ位置で消しゴム
       eraseOnObjects(px, py, penSize*0.5);
     }
-    pc.globalCompositeOperation='source-over';
+    ctx.globalCompositeOperation='source-over';
   }else{
     if(brushMode==='watercolor'){
-      stampWatercolor(pc,x1,y1,x2,y2,penColor,penSize*1.25,wcWet);
+      stampWatercolor(ctx,x1,y1,x2,y2,penColor,penSize*1.25,wcWet);
     }else if(brushMode==='calligraphy'){
-      stampCalligraphy(pc, x1, y1, x2, y2, penColor, penSize, calligAngleRad, drawPressure, drawSpeed, mixMode);
+      stampCalligraphy(ctx, x1, y1, x2, y2, penColor, penSize, calligAngleRad, drawPressure, drawSpeed, mixMode);
     }else{
-      pc.globalAlpha = mixMode ? 0.6 : 1.0;
-      pc.strokeStyle=penColor;
-      pc.lineWidth=penSize;
-      pc.lineCap='round'; pc.lineJoin='round';
-      pc.beginPath(); pc.moveTo(x1,y1); pc.lineTo(x2,y2); pc.stroke();
-      pc.globalAlpha = 1.0;
+      ctx.globalAlpha = mixMode ? 0.6 : 1.0;
+      ctx.strokeStyle=penColor;
+      ctx.lineWidth=penSize;
+      ctx.lineCap='round'; ctx.lineJoin='round';
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      ctx.globalAlpha = 1.0;
     }
   }
-  pc.restore();
+  ctx.restore();
 }
 
 
@@ -2339,6 +2411,100 @@ let isDraw=false,lx=0,ly=0;
 let drawPressure = 0.5;
 let drawSpeed = 0.0; // px/ms
 let lastMoveTS = 0;
+
+/* ========= ★ 「一つながりの線」をオブジェクトにする仕組み =========
+   - 描いている間は専用キャンバス(strokeOff)に描き、画面にはその都度合成して見せる
+   - 指／マウスを離した時点で、その一筆をオブジェクト（objs）に変換する
+   - こうすると線も右クリックで複製・削除・重ね順の変更ができる            */
+const strokeOff = document.createElement('canvas');
+strokeOff.width = W; strokeOff.height = H;
+const sc = strokeOff.getContext('2d');
+const strokeBaseSnap = document.createElement('canvas');
+strokeBaseSnap.width = W; strokeBaseSnap.height = H;
+const sbc = strokeBaseSnap.getContext('2d');
+let strokeActive = false;
+let strokeBox = null;
+
+function beginStrokeCapture(){
+  sc.clearRect(0,0,W,H);
+  sbc.clearRect(0,0,W,H);
+  sbc.drawImage(paintCvs,0,0);
+  strokeActive = true;
+  strokeBox = null;
+}
+function expandStrokeBox(x1,y1,x2,y2){
+  const pad = penSize*1.6 + 16;
+  const nx0=Math.min(x1,x2)-pad, ny0=Math.min(y1,y2)-pad;
+  const nx1=Math.max(x1,x2)+pad, ny1=Math.max(y1,y2)+pad;
+  if(!strokeBox) strokeBox={minX:nx0,minY:ny0,maxX:nx1,maxY:ny1};
+  else{
+    strokeBox.minX=Math.min(strokeBox.minX,nx0);
+    strokeBox.minY=Math.min(strokeBox.minY,ny0);
+    strokeBox.maxX=Math.max(strokeBox.maxX,nx1);
+    strokeBox.maxY=Math.max(strokeBox.maxY,ny1);
+  }
+  return {
+    x0:Math.max(0,Math.floor(nx0)), y0:Math.max(0,Math.floor(ny0)),
+    x1:Math.min(W,Math.ceil(nx1)),  y1:Math.min(H,Math.ceil(ny1))
+  };
+}
+function blitStrokeRegion(r){
+  const w=r.x1-r.x0, h=r.y1-r.y0;
+  if(w<=0||h<=0) return;
+  pc.clearRect(r.x0,r.y0,w,h);
+  pc.drawImage(strokeBaseSnap, r.x0,r.y0,w,h, r.x0,r.y0,w,h);
+  pc.drawImage(strokeOff,      r.x0,r.y0,w,h, r.x0,r.y0,w,h);
+}
+function restorePaintToBase(){
+  pc.clearRect(0,0,W,H);
+  pc.drawImage(strokeBaseSnap,0,0);
+}
+/* 描き終わった一筆をオブジェクトに変換 */
+function finishStrokeAsObject(){
+  if(!strokeActive) return;
+  strokeActive = false;
+  if(!strokeBox){ sc.clearRect(0,0,W,H); return; }
+
+  let x0=Math.max(0,Math.floor(strokeBox.minX));
+  let y0=Math.max(0,Math.floor(strokeBox.minY));
+  let x1=Math.min(W,Math.ceil(strokeBox.maxX));
+  let y1=Math.min(H,Math.ceil(strokeBox.maxY));
+  strokeBox = null;
+  let bw=x1-x0, bh=y1-y0;
+  if(bw<1||bh<1){ restorePaintToBase(); sc.clearRect(0,0,W,H); return; }
+
+  // 実際にインクのある範囲まで詰める
+  try{
+    const data = sc.getImageData(x0,y0,bw,bh).data;
+    let mnx=bw, mny=bh, mxx=-1, mxy=-1;
+    for(let y=0;y<bh;y++){
+      for(let x=0;x<bw;x++){
+        if(data[(y*bw+x)*4+3] > 4){
+          if(x<mnx)mnx=x; if(x>mxx)mxx=x;
+          if(y<mny)mny=y; if(y>mxy)mxy=y;
+        }
+      }
+    }
+    if(mxx<0){ restorePaintToBase(); sc.clearRect(0,0,W,H); return; }
+    x0+=mnx; y0+=mny; bw=mxx-mnx+1; bh=mxy-mny+1;
+  }catch(_){}
+
+  const bmp=document.createElement('canvas');
+  bmp.width=bw; bmp.height=bh;
+  bmp.getContext('2d').drawImage(strokeOff, x0,y0,bw,bh, 0,0,bw,bh);
+
+  // 手描きレイヤーは「描く前」に戻す（線はオブジェクトが持つ）
+  restorePaintToBase();
+  sc.clearRect(0,0,W,H);
+
+  spreads[cur].objs.push({
+    bmp, w:bw, h:bh,
+    cx:x0+bw/2, cy:y0+bh/2,
+    scale:1, theta:0,
+    kind:'stroke'
+  });
+  redrawObjs();
+}
 
 function getPressureFromEvent(e){
   // PointerEvent / Touch の pressure を安全に読む（無ければ0.5）
@@ -2354,6 +2520,9 @@ function dStart(e){
   isDraw=true;
   const p=pos(paintCvs,e);
   lx=p.x; ly=p.y;
+
+  // ★ 消しゴム以外は「一筆」のキャプチャを開始
+  if(!erasing) beginStrokeCapture();
 
   // ★ 追加：ページ再生中に描き始めたら、その時点のページ時間にそろえる
   if (isPageLogPlaying) {
@@ -2382,8 +2551,14 @@ function dMove(e){
   const x1 = lx, y1 = ly;
   const x2 = p.x, y2 = p.y;
 
-  // 実際の描画
-  line(x1, y1, x2, y2);
+  // 実際の描画（★ 消しゴム以外は一筆キャンバスに描いて画面に合成）
+  if(erasing){
+    line(x1, y1, x2, y2);
+  }else{
+    const r = expandStrokeBox(x1, y1, x2, y2);
+    line(x1, y1, x2, y2, sc);
+    blitStrokeRegion(r);
+  }
 
   // ★ この1セグメントを drawMove として記録
   logAction('drawMove', {
@@ -2411,21 +2586,30 @@ function dMove(e){
 function dEnd(e){
   if(!isDraw) return;
   isDraw=false;
+  finishStrokeAsObject();   // ★ 一筆をオブジェクトにする
   logAction('drawEnd',{page:cur+1,x:+lx.toFixed(1),y:+ly.toFixed(1)});
 }
 
 /* ========= 画像オブジェクト関連 ========= */
 function redrawObjs(){
   oc.clearRect(0,0,W,H);
-  spreads[cur].objs.forEach((o,i)=>{
+  const _objs = spreads[cur].objs;
+
+  // ★ ノート（ページ）の形の内側だけに画像を描く
+  oc.save();
+  clipToPageArea(oc, spreads[cur]?.type || 'normal');
+  _objs.forEach((o)=>{
     oc.save();
     oc.translate(o.cx,o.cy);
     oc.rotate(o.theta);
     oc.scale(o.scale,o.scale);
     oc.drawImage(o.bmp,-o.w/2,-o.h/2);
     oc.restore();
-    if(i===sel && mode==='edit') drawGizmo(o);
   });
+  oc.restore();
+
+  // ★ 選択枠（ギズモ）はクリップの外側に描く＝はみ出しても操作できる
+  if(sel>=0 && sel<_objs.length && mode==='edit') drawGizmo(_objs[sel]);
   fxc.clearRect(0,0,W,H);
 
   // ★ スポイトのキラキラ強調
@@ -2434,9 +2618,7 @@ function redrawObjs(){
     const stepFrames=8;
     const diameter=1+(Math.floor(ef.frame/stepFrames)%30);
     const radius=diameter/2;
-    penSize=diameter;
-    penSizeInput.value=diameter;
-    penSizeView.textContent=diameter+'px';
+    setPenSize(diameter);
     fxc.save();
     fxc.globalAlpha=0.7;
     fxc.fillStyle=ef.color;
@@ -2492,6 +2674,28 @@ function eraseOnObjects(cx, cy, r){
     ctx.fill();
     ctx.restore();
   }
+}
+
+/* ★ 四角（バウンディングボックス）に入っているか */
+function rectHit(o,px,py){
+  const lp=local(o,px,py);
+  return Math.abs(lp.x)<=o.w/2 && Math.abs(lp.y)<=o.h/2;
+}
+/* ★ オブジェクトに当たったか（線は透明部分を無視して線の近くだけ判定） */
+function hitObj(o,px,py){
+  if(!rectHit(o,px,py)) return false;
+  if(o.kind!=='stroke') return true;
+  const lp=local(o,px,py);
+  const ix=Math.round(lp.x+o.w/2), iy=Math.round(lp.y+o.h/2);
+  const r =Math.max(4, Math.round(8/(o.scale||1)));
+  const x0=Math.max(0,ix-r), y0=Math.max(0,iy-r);
+  const x1=Math.min(o.w,ix+r+1), y1=Math.min(o.h,iy+r+1);
+  if(x1<=x0||y1<=y0) return false;
+  try{
+    const d=o.bmp.getContext('2d').getImageData(x0,y0,x1-x0,y1-y0).data;
+    for(let i=3;i<d.length;i+=4){ if(d[i]>8) return true; }
+  }catch(_){ return true; }
+  return false;
 }
 
 function hitRotate(o,px,py){
@@ -2912,45 +3116,48 @@ function canvasDown(e){
     return;
   }
 
-  // 画像ヒット判定
+  // 画像・線のヒット判定
+  // ★ 「えらぶ（矢印／画像）」モードのときだけ選択する。
+  //    ペンや消しゴムのときは、線の上でもそのまま描ける。
   const p=pos(paintCvs,e);
-  let hitIndex=-1, hitOnRotate=false;
-  for(let i=spreads[cur].objs.length-1;i>=0;i--){
-    const o=spreads[cur].objs[i];
-    const lp=local(o,p.x,p.y);
-    const inside=Math.abs(lp.x)<=o.w/2 && Math.abs(lp.y)<=o.h/2;
-    const onRot=hitRotate(o,p.x,p.y);
-    if(inside || onRot){
-      hitIndex=i;
-      hitOnRotate=onRot && !inside;
-      break;
-    }
-  }
-  if(hitIndex>=0){
-    // ★ 画像の移動/回転/拡大縮小の前に履歴を積む
-    pushHistoryForCurrentSpread();
-    if(mode!=='edit') setMode('edit');
-    sel=hitIndex;
-    const o=spreads[cur].objs[sel];
-    if(hitOnRotate || hitRotate(o,p.x,p.y)){
-      action='rotate';
-      rotStart.ang=Math.atan2(p.y-o.cy,p.x-o.cx);
-      rotStart.theta=o.theta;
-    }else{
-      const c=hitCorner(o,p.x,p.y);
-      if(c>=0){
-        action='scale';
-        scaleStart.d=Math.hypot(p.x-o.cx,p.y-o.cy);
-        scaleStart.s=o.scale;
-      }else{
-        action='move';
-        dragOff.x=p.x-o.cx; dragOff.y=p.y-o.cy;
+  if(mode==='edit'){
+    let hitIndex=-1, hitOnRotate=false;
+    for(let i=spreads[cur].objs.length-1;i>=0;i--){
+      const o=spreads[cur].objs[i];
+      // ★ 選択中のものは枠のどこを掴んでもOK、それ以外は線なら線の上だけ
+      const inside=(i===sel) ? rectHit(o,p.x,p.y) : hitObj(o,p.x,p.y);
+      const onRot=hitRotate(o,p.x,p.y);
+      if(inside || onRot){
+        hitIndex=i;
+        hitOnRotate=onRot && !inside;
+        break;
       }
     }
-    isDraw=false;
-    redrawObjs();
-    e.preventDefault();
-    return;
+    if(hitIndex>=0){
+      // ★ 画像の移動/回転/拡大縮小の前に履歴を積む
+      pushHistoryForCurrentSpread();
+      sel=hitIndex;
+      const o=spreads[cur].objs[sel];
+      if(hitOnRotate || hitRotate(o,p.x,p.y)){
+        action='rotate';
+        rotStart.ang=Math.atan2(p.y-o.cy,p.x-o.cx);
+        rotStart.theta=o.theta;
+      }else{
+        const c=hitCorner(o,p.x,p.y);
+        if(c>=0){
+          action='scale';
+          scaleStart.d=Math.hypot(p.x-o.cx,p.y-o.cy);
+          scaleStart.s=o.scale;
+        }else{
+          action='move';
+          dragOff.x=p.x-o.cx; dragOff.y=p.y-o.cy;
+        }
+      }
+      isDraw=false;
+      redrawObjs();
+      e.preventDefault();
+      return;
+    }
   }
 
   sel=-1;
@@ -3107,6 +3314,29 @@ let currentCamDeviceId=null;
 let isLassoDrawing=false;
 let lassoPath=[];
 
+/* ★ 追加：切り抜きのもとになる映像ソース（カメラ or 読みこんだ画像） */
+let camSourceMode='camera';   // 'camera' | 'image'
+let camImageEl=null;          // ローカルから読みこんだ画像
+let camImageURL=null;         // その objectURL
+const camLoadImg   =document.getElementById('camLoadImg');
+const camImgInput  =document.getElementById('camImgInput');
+const camBackToCam =document.getElementById('camBackToCam');
+const camDropHint  =document.getElementById('camDropHint');
+
+/* いま切り抜きに使えるソースを返す（無ければ null） */
+function getCamSource(){
+  if(camSourceMode==='image'){
+    if(camImageEl && camImageEl.naturalWidth && camImageEl.naturalHeight){
+      return {el:camImageEl, w:camImageEl.naturalWidth, h:camImageEl.naturalHeight};
+    }
+    return null;
+  }
+  if(camStream && camVideo.videoWidth && camVideo.videoHeight){
+    return {el:camVideo, w:camVideo.videoWidth, h:camVideo.videoHeight};
+  }
+  return null;
+}
+
 const camComposite=document.createElement('canvas');
 const camCompCtx=camComposite.getContext('2d');
 
@@ -3230,7 +3460,9 @@ function sizeOverlay(){
   drawLassoOverlay();
 }
 function drawCamFrameToComposite(){
-  const vw=camVideo.videoWidth,vh=camVideo.videoHeight;
+  const srcObj=getCamSource();
+  if(!srcObj) return;
+  const vw=srcObj.w,vh=srcObj.h;
   const cw=camComposite.width,ch=camComposite.height;
   if(!vw||!vh||!cw||!ch) return;
   const ctx=camCompCtx;
@@ -3243,7 +3475,7 @@ function drawCamFrameToComposite(){
   const dx=(cw-rw)/2, dy=(ch-rh)/2;
   ctx.filter=camFilterString||'none';
   ctx.translate(dx,dy); ctx.scale(s,s);
-  ctx.drawImage(camVideo,0,0,vw,vh);
+  ctx.drawImage(srcObj.el,0,0,vw,vh);
   ctx.restore();
   ctx.filter='none';
   postProcessCamFrame();
@@ -3253,9 +3485,13 @@ function drawCamFrameToComposite(){
   }
 }
 (function renderLoop(){
-  if(camModal.classList.contains('show') && camStream && camVideo.readyState>=2){
-    camVideo.style.visibility='visible';
-    drawCamFrameToComposite();
+  if(camModal.classList.contains('show')){
+    if(camSourceMode==='image'){
+      if(camImageEl) drawCamFrameToComposite();
+    }else if(camStream && camVideo.readyState>=2){
+      camVideo.style.visibility='visible';
+      drawCamFrameToComposite();
+    }
   }
   requestAnimationFrame(renderLoop);
 })();
@@ -3295,9 +3531,8 @@ function camPos(e){
 
 /* ★ なげなわ → スタンプライブラリにも追加 */
 function createStickerFromLasso(){
-  if(!camStream || !lassoPath.length || isLassoDrawing) return;
-  const vw=camVideo.videoWidth,vh=camVideo.videoHeight;
-  if(!vw||!vh) return;
+  const srcObj=getCamSource();
+  if(!srcObj || !lassoPath.length || isLassoDrawing) return;
   const cw=camComposite.width,ch=camComposite.height;
   if(!cw||!ch) return;
 
@@ -3343,6 +3578,7 @@ function createStickerFromLasso(){
   setMode('edit');
   logAction('cameraCut',{
     page:cur+1,
+    src:camSourceMode,
     w:bw,h:bh,
     cx:+obj.cx.toFixed(1),
     cy:+obj.cy.toFixed(1),
@@ -3350,13 +3586,12 @@ function createStickerFromLasso(){
   });
 
   lassoPath=[]; isLassoDrawing=false; drawLassoOverlay();
-  camModal.classList.remove('show');
-  stopCam();
+  closeCamModal();
 }
 
 /* なげなわ入力 */
 function olDown(e){
-  if(!camStream) return;
+  if(!getCamSource()) return;
   e.preventDefault();
   isLassoDrawing=true;
   lassoPath=[camPos(e)];
@@ -3411,13 +3646,105 @@ async function startCam(deviceId=null){
       await populateCamList();
     }
   }catch(e){
-    alert('カメラが利用できません：'+e.message);
+    alert('カメラが利用できません：'+e.message+'\n「画像をひらく」で保存した画像から切り抜くこともできます。');
   }
 }
 function stopCam(){
   try{ camStream?.getTracks().forEach(t=>t.stop()); }catch(_){}
   camStream=null;
+  camVideo.style.visibility='hidden';
 }
+
+/* ========= ローカル画像を読みこんでなげなわ切り抜き ========= */
+function updateCamModeUI(){
+  const isImg=(camSourceMode==='image');
+  if(camBackToCam) camBackToCam.style.display = isImg?'':'none';
+  if(camSelect)    camSelect.style.display    = isImg?'none':'';
+  if(camRefresh)   camRefresh.style.display   = isImg?'none':'';
+  if(camLoadImg)   camLoadImg.textContent     = isImg?'ほかの画像':'画像をひらく';
+}
+function clearCamImage(){
+  if(camImageURL){ try{ URL.revokeObjectURL(camImageURL); }catch(_){} }
+  camImageURL=null;
+  camImageEl=null;
+  camSourceMode='camera';
+  updateCamModeUI();
+}
+function closeCamModal(){
+  camModal.classList.remove('show');
+  stopCam();
+  clearCamImage();
+  lassoPath=[]; isLassoDrawing=false;
+  try{ drawLassoOverlay(); }catch(_){}
+}
+function loadLocalImageForLasso(file){
+  if(!file || !/^image\//.test(file.type||'')){
+    alert('画像ファイルをえらんでください');
+    return;
+  }
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{
+    if(camImageURL){ try{ URL.revokeObjectURL(camImageURL); }catch(_){} }
+    camImageURL=url;
+    camImageEl=img;
+    camSourceMode='image';
+    stopCam();                       // カメラは止めて画像モードへ
+    lassoPath=[]; isLassoDrawing=false;
+    updateCamModeUI();
+    requestAnimationFrame(()=>{ sizeOverlay(); drawCamFrameToComposite(); });
+    logAction('toolSelect',{tool:'imageLoad'});
+  };
+  img.onerror=()=>{
+    try{ URL.revokeObjectURL(url); }catch(_){}
+    alert('この画像は読みこめませんでした');
+  };
+  img.src=url;
+}
+if(camLoadImg){
+  camLoadImg.onclick=()=>{ if(camImgInput){ camImgInput.value=''; camImgInput.click(); } };
+}
+if(camImgInput){
+  camImgInput.onchange=()=>{
+    const f=camImgInput.files && camImgInput.files[0];
+    if(f) loadLocalImageForLasso(f);
+  };
+}
+if(camBackToCam){
+  camBackToCam.onclick=async()=>{
+    clearCamImage();
+    lassoPath=[]; isLassoDrawing=false; drawLassoOverlay();
+    await startCam(currentCamDeviceId);
+    requestAnimationFrame(sizeOverlay);
+  };
+}
+/* ドラッグ＆ドロップ */
+(function setupCamDrop(){
+  const card=camModal?camModal.querySelector('.camCard'):null;
+  if(!card) return;
+  const show=v=>{ if(camDropHint) camDropHint.classList.toggle('show',v); };
+  card.addEventListener('dragover',e=>{ e.preventDefault(); show(true); });
+  card.addEventListener('dragleave',e=>{ show(false); });
+  card.addEventListener('drop',e=>{
+    e.preventDefault(); show(false);
+    const f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) loadLocalImageForLasso(f);
+  });
+})();
+/* クリップボードから貼り付け（モーダル表示中のみ） */
+window.addEventListener('paste',e=>{
+  if(!camModal.classList.contains('show')) return;
+  const items=e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  for(const it of items){
+    if(it.type && it.type.indexOf('image')===0){
+      const f=it.getAsFile();
+      if(f){ e.preventDefault(); loadLocalImageForLasso(f); }
+      break;
+    }
+  }
+});
+updateCamModeUI();
 camSelect.onchange=()=>{
   currentCamDeviceId=camSelect.value||null;
   startCam(currentCamDeviceId);
@@ -3427,14 +3754,15 @@ camRefresh.onclick=async()=>{ await populateCamList(); };
 btnOpenCam.onclick=async()=>{
   hideDrawPanel();
   camModal.classList.add('show');
+  clearCamImage();
   lassoPath=[]; isLassoDrawing=false; drawLassoOverlay();
+  requestAnimationFrame(sizeOverlay);
   await startCam(currentCamDeviceId);
   requestAnimationFrame(sizeOverlay);
   logAction('toolSelect',{tool:'cameraOpen'});
 };
 btnCamClose.onclick=()=>{
-  camModal.classList.remove('show');
-  stopCam();
+  closeCamModal();
   logAction('toolSelect',{tool:'cameraClose'});
 };
 window.addEventListener('resize',()=>{
@@ -3821,7 +4149,9 @@ function fitFS(){ fsCanvas.width=window.innerWidth; fsCanvas.height=window.inner
     ctx.restore();
   }
 
-  // 貼り付け画像
+  // 貼り付け画像（★ ページからはみ出した分は見切れさせる）
+  ctx.save();
+  clipToPageArea(ctx, sp.type || 'normal');
   sp.objs.forEach(o=>{
     ctx.save();
     ctx.translate(o.cx, o.cy);
@@ -3830,6 +4160,7 @@ function fitFS(){ fsCanvas.width=window.innerWidth; fsCanvas.height=window.inner
     ctx.drawImage(o.bmp, -o.w/2, -o.h/2);
     ctx.restore();
   });
+  ctx.restore();
 
   // 手描きレイヤ
   ctx.drawImage(paintCvs, 0, 0);
@@ -3897,6 +4228,8 @@ function drawFS(){
       cc.restore();
     }
 
+    cc.save();
+    clipToPageArea(cc, spreads[cur].type || 'normal');
     spreads[cur].objs.forEach(o=>{
       cc.save();
       cc.translate(o.cx, o.cy);
@@ -3905,6 +4238,7 @@ function drawFS(){
       cc.drawImage(o.bmp, -o.w/2, -o.h/2);
       cc.restore();
     });
+    cc.restore();
 
     if (spreads[cur].paintOff) cc.drawImage(spreads[cur].paintOff, 0, 0);
     else                       cc.drawImage(paintCvs, 0, 0);
@@ -4318,6 +4652,8 @@ savePdf.onclick=()=>{
       cx.restore();
     }
 
+    cx.save();
+    clipToPageArea(cx, sp.type || 'normal');
     sp.objs.forEach(o=>{
       cx.save();
       cx.translate(o.cx,o.cy);
@@ -4326,6 +4662,7 @@ savePdf.onclick=()=>{
       cx.drawImage(o.bmp,-o.w/2,-o.h/2);   // ★ img → bmp
       cx.restore();
     });
+    cx.restore();
 
     if(sp.paintOff) cx.drawImage(sp.paintOff,0,0);
     pdf.addImage(c.toDataURL('image/png'),'PNG',0,0,W,H);
@@ -4340,12 +4677,19 @@ const imgMenu=document.getElementById('imgMenu');
 const btnDup =imgMenu.querySelector('[data-act="dup"]');
 const btnDel =imgMenu.querySelector('[data-act="del"]');
 const btnPaste=imgMenu.querySelector('[data-act="paste"]');
+const btnFront=imgMenu.querySelector('[data-act="front"]');
+const btnBack =imgMenu.querySelector('[data-act="back"]');
+const imgMenuSep=imgMenu.querySelector('.imgMenuSep');
 let menuTargetIndex=-1;
 
-function showImgMenu(x,y,mode){
+function showImgMenu(x,y,menuMode){
   imgMenu.style.left=x+'px';
   imgMenu.style.top=y+'px';
-  if(mode==='obj'){
+  const isObj=(menuMode==='obj');
+  if(btnFront) btnFront.style.display=isObj?'block':'none';
+  if(btnBack)  btnBack.style.display =isObj?'block':'none';
+  if(imgMenuSep) imgMenuSep.style.display=isObj?'block':'none';
+  if(isObj){
     btnDup.style.display='block';
     btnDel.style.display='block';
     btnPaste.style.display=clipboardTemplate?'block':'none';
@@ -4356,6 +4700,16 @@ function showImgMenu(x,y,mode){
     if(!clipboardTemplate) return;
   }
   imgMenu.style.display='block';
+
+  // 画面からはみ出さないように位置を微調整
+  requestAnimationFrame(()=>{
+    const r=imgMenu.getBoundingClientRect();
+    let nx=x, ny=y;
+    if(r.right >window.innerWidth ) nx=Math.max(4,window.innerWidth -r.width -4);
+    if(r.bottom>window.innerHeight) ny=Math.max(4,window.innerHeight-r.height-4);
+    imgMenu.style.left=nx+'px';
+    imgMenu.style.top =ny+'px';
+  });
 }
 function hideImgMenu(){
   imgMenu.style.display='none';
@@ -4369,12 +4723,17 @@ paintCvs.addEventListener('contextmenu',(e)=>{
   let hitIndex=-1;
   for(let i=spreads[cur].objs.length-1;i>=0;i--){
     const o=spreads[cur].objs[i];
-    const lp=local(o,p.x,p.y);
-    if(Math.abs(lp.x)<=o.w/2 && Math.abs(lp.y)<=o.h/2){ hitIndex=i; break; }
+    if(hitObj(o,p.x,p.y)){ hitIndex=i; break; }
   }
   menuTargetIndex=hitIndex;
-  const mode=(hitIndex>=0)?'obj':'blank';
-  showImgMenu(e.clientX,e.clientY,mode);
+  // ★ 右クリックした画像をそのまま「選択中」にする
+  if(hitIndex>=0){
+    sel=hitIndex;
+    if(mode!=='edit') setMode('edit');
+    redrawObjs();
+  }
+  const menuMode=(hitIndex>=0)?'obj':'blank';
+  showImgMenu(e.clientX,e.clientY,menuMode);
 });
 document.addEventListener('click',(e)=>{
   if(!e.target.closest('#imgMenu')) hideImgMenu();
@@ -4396,6 +4755,7 @@ btnDup.onclick=()=>{
     h: src.h,
     scale: src.scale,
     theta: src.theta,
+    kind: src.kind,
     cx: src.cx + 20,
     cy: src.cy + 20
   };
@@ -4412,7 +4772,10 @@ btnDup.onclick=()=>{
     w: src.w,
     h: src.h,
     scale: src.scale,
-    theta: src.theta
+    theta: src.theta,
+    kind: src.kind,
+    cx: src.cx,
+    cy: src.cy
   };
 
   setMode('edit');
@@ -4423,37 +4786,131 @@ btnDup.onclick=()=>{
 
 btnDel.onclick=()=>{
   if(menuTargetIndex<0) return;
-  spreads[cur].objs.splice(menuTargetIndex,1);
-  sel=-1;
-  redrawObjs();
+  deleteObjAt(menuTargetIndex);
   hideImgMenu();
-  logAction('imageDelete',{page:cur+1,index:menuTargetIndex});
 };
 
-btnPaste.onclick=()=>{
-  if(!clipboardTemplate) return;
-  const tpl = clipboardTemplate;
+/* ★ 画像を1つ消す（右クリックメニュー／Deleteキー共通） */
+function deleteObjAt(index){
+  const objs=spreads[cur].objs;
+  if(index<0 || index>=objs.length) return;
+  pushHistoryForCurrentSpread();
+  objs.splice(index,1);
+  sel=-1;
+  redrawObjs();
+  logAction('imageDelete',{page:cur+1,index});
+}
 
-  // ★ クリップボードの bmp からさらにコピーを作る
-  const bmpCopy = document.createElement('canvas');
-  bmpCopy.width  = tpl.w;
-  bmpCopy.height = tpl.h;
-  bmpCopy.getContext('2d').drawImage(tpl.bmp, 0, 0);
+/* ★ 重なり順を変える（いちばん上／いちばん下） */
+function moveObjOrder(index, where){
+  const objs=spreads[cur].objs;
+  if(index<0 || index>=objs.length) return;
+  if(objs.length<2){ sel=index; redrawObjs(); return; }
+  pushHistoryForCurrentSpread();
+  const [o]=objs.splice(index,1);
+  if(where==='front'){ objs.push(o);    sel=objs.length-1; }
+  else               { objs.unshift(o); sel=0; }
+  if(mode!=='edit') setMode('edit');
+  redrawObjs();
+  logAction('imageOrder',{page:cur+1,from:index,to:where});
+}
 
+if(btnFront) btnFront.onclick=()=>{ if(menuTargetIndex<0) return; moveObjOrder(menuTargetIndex,'front'); hideImgMenu(); };
+if(btnBack)  btnBack.onclick =()=>{ if(menuTargetIndex<0) return; moveObjOrder(menuTargetIndex,'back');  hideImgMenu(); };
+
+/* ★ コピー／切り取り／ペースト */
+function copyObjAt(index){
+  const o=spreads[cur].objs[index];
+  if(!o) return false;
+  const bmp=document.createElement('canvas');
+  bmp.width=o.w; bmp.height=o.h;
+  bmp.getContext('2d').drawImage(o.bmp,0,0);
+  clipboardTemplate={ bmp, w:o.w, h:o.h, scale:o.scale, theta:o.theta,
+                      kind:o.kind, cx:o.cx, cy:o.cy };
+  return true;
+}
+function cutObjAt(index){
+  if(!copyObjAt(index)) return;
+  deleteObjAt(index);
+}
+function pasteFromClipboard(at){
+  const tpl=clipboardTemplate;
+  if(!tpl) return;
+  pushHistoryForCurrentSpread();
+  const bmpCopy=document.createElement('canvas');
+  bmpCopy.width=tpl.w; bmpCopy.height=tpl.h;
+  bmpCopy.getContext('2d').drawImage(tpl.bmp,0,0);
+  let px, py;
+  if(at){ px=at.x; py=at.y; }
+  else{
+    px=(tpl.cx!=null?tpl.cx:W/2)+24;
+    py=(tpl.cy!=null?tpl.cy:H/2)+24;
+    tpl.cx=px; tpl.cy=py;      // 続けて貼ると少しずつずれる
+  }
   spreads[cur].objs.push({
-    bmp: bmpCopy,
-    w: tpl.w,
-    h: tpl.h,
-    scale: tpl.scale,
-    theta: tpl.theta,
-    cx: lastRightClickPos.x,
-    cy: lastRightClickPos.y
+    bmp:bmpCopy, w:tpl.w, h:tpl.h,
+    scale:tpl.scale, theta:tpl.theta, kind:tpl.kind,
+    cx:px, cy:py
   });
   sel=spreads[cur].objs.length-1;
   setMode('edit');
   redrawObjs();
-  hideImgMenu();
   logAction('imagePaste',{page:cur+1});
+}
+
+/* ★ キーボード操作
+   Delete/BackSpace…削除 ／ Ctrl(⌘)+C…コピー
+   Ctrl(⌘)+V…ペースト ／ Ctrl(⌘)+S・Ctrl(⌘)+X…切り取り */
+function isTypingTarget(el){
+  if(!el) return false;
+  const tag=(el.tagName||'').toLowerCase();
+  return tag==='input' || tag==='textarea' || tag==='select' || el.isContentEditable;
+}
+function keyboardBlocked(target){
+  if(isTypingTarget(target)) return true;
+  if(camModal && camModal.classList.contains('show')) return true;
+  const fsEl=document.getElementById('fs');
+  if(fsEl && getComputedStyle(fsEl).display!=='none') return true;
+  return false;
+}
+document.addEventListener('keydown',(e)=>{
+  if(keyboardBlocked(e.target)) return;
+  const objs=spreads[cur].objs;
+  const hasSel=(sel>=0 && sel<objs.length);
+  const mod=e.ctrlKey || e.metaKey;
+  const k=(e.key||'').toLowerCase();
+
+  if(mod && (k==='c' || k==='v' || k==='s' || k==='x')){
+    if(k==='c'){
+      if(!hasSel) return;
+      e.preventDefault(); copyObjAt(sel);
+    }else if(k==='v'){
+      if(!clipboardTemplate) return;
+      e.preventDefault(); hideImgMenu(); pasteFromClipboard(null);
+    }else{ // s / x = 切り取り
+      if(!hasSel) return;
+      e.preventDefault(); hideImgMenu(); cutObjAt(sel);
+    }
+    return;
+  }
+
+  if(e.key==='Delete' || e.key==='Backspace'){
+    if(!hasSel) return;
+    e.preventDefault();
+    hideImgMenu();
+    deleteObjAt(sel);
+    return;
+  }
+  if(e.key==='Escape'){
+    if(hasSel){ sel=-1; redrawObjs(); }
+    hideImgMenu();
+  }
+});
+
+btnPaste.onclick=()=>{
+  if(!clipboardTemplate) return;
+  pasteFromClipboard({x:lastRightClickPos.x, y:lastRightClickPos.y});
+  hideImgMenu();
 };
 
 /* ========= ★ このページのログ再生 ========= */
