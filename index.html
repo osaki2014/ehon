@@ -4871,7 +4871,8 @@ function pasteFromClipboard(at){
 
 /* ★ キーボード操作
    Delete/BackSpace…削除 ／ Ctrl(⌘)+C…コピー
-   Ctrl(⌘)+V…ペースト ／ Ctrl(⌘)+S・Ctrl(⌘)+X…切り取り */
+   Ctrl(⌘)+V…ペースト ／ Ctrl(⌘)+S・Ctrl(⌘)+X…切り取り
+   Ctrl(⌘)+Z…1つ前にもどす（Undo） ／ Esc…選択解除 */
 function isTypingTarget(el){
   if(!el) return false;
   const tag=(el.tagName||'').toLowerCase();
@@ -4890,6 +4891,16 @@ document.addEventListener('keydown',(e)=>{
   const hasSel=(sel>=0 && sel<objs.length);
   const mod=e.ctrlKey || e.metaKey;
   const k=(e.key||'').toLowerCase();
+
+  // ★ Ctrl(⌘)+Z … 1つ前にもどす（Undo）
+  if(mod && k==='z'){
+    e.preventDefault();
+    hideImgMenu();
+    hideDrawPanel();
+    undoCurrent();
+    logAction('undo',{page:cur+1});
+    return;
+  }
 
   if(mod && (k==='c' || k==='v' || k==='s' || k==='x')){
     if(k==='c'){
