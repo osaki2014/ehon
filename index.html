@@ -1883,9 +1883,7 @@ function cloneSpread(sp){
 
   // 画像オブジェクト
   for (const o of sp.objs){
-    const bmpCopy = document.createElement('canvas');
-    bmpCopy.width  = o.w;
-    bmpCopy.height = o.h;
+    const bmpCopy = newBmpCanvas(o.w, o.h);
     bmpCopy.getContext('2d').drawImage(o.bmp, 0, 0);
     cloned.objs.push({
       bmp: bmpCopy,
@@ -2418,7 +2416,7 @@ let lastMoveTS = 0;
    - こうすると線も右クリックで複製・削除・重ね順の変更ができる            */
 const strokeOff = document.createElement('canvas');
 strokeOff.width = W; strokeOff.height = H;
-const sc = strokeOff.getContext('2d');
+const sc = strokeOff.getContext('2d', { willReadFrequently: true });
 const strokeBaseSnap = document.createElement('canvas');
 strokeBaseSnap.width = W; strokeBaseSnap.height = H;
 const sbc = strokeBaseSnap.getContext('2d');
@@ -2459,6 +2457,17 @@ function restorePaintToBase(){
   pc.clearRect(0,0,W,H);
   pc.drawImage(strokeBaseSnap,0,0);
 }
+/* ★ 途中のキャプチャを捨てる（ページ作り直しの前など） */
+function cancelStrokeCapture(){
+  strokeActive = false;
+  strokeBox = null;
+  sc.clearRect(0,0,W,H);
+}
+/* ★ 未確定の一筆があれば確定させる */
+function flushPendingStroke(){
+  if(strokeActive) finishStrokeAsObject();
+}
+
 /* 描き終わった一筆をオブジェクトに変換 */
 function finishStrokeAsObject(){
   if(!strokeActive) return;
@@ -2489,8 +2498,7 @@ function finishStrokeAsObject(){
     x0+=mnx; y0+=mny; bw=mxx-mnx+1; bh=mxy-mny+1;
   }catch(_){}
 
-  const bmp=document.createElement('canvas');
-  bmp.width=bw; bmp.height=bh;
+  const bmp=newBmpCanvas(bw,bh);
   bmp.getContext('2d').drawImage(strokeOff, x0,y0,bw,bh, 0,0,bw,bh);
 
   // 手描きレイヤーは「描く前」に戻す（線はオブジェクトが持つ）
@@ -2654,6 +2662,16 @@ function local(o,px,py){
   const dx=px-o.cx, dy=py-o.cy, c=Math.cos(-o.theta), s=Math.sin(-o.theta);
   return {x:(dx*c-dy*s)/o.scale, y:(dx*s+dy*c)/o.scale};
 }
+/* ★ あとで getImageData する用のキャンバス
+   （willReadFrequently を付けておくとブラウザの警告が出ず、読み取りも速い） */
+function newBmpCanvas(w, h){
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, w|0);
+  c.height= Math.max(1, h|0);
+  c.getContext('2d', { willReadFrequently: true });
+  return c;
+}
+
 /* ★ 画像オブジェクトに対する消しゴム処理 */
 function eraseOnObjects(cx, cy, r){
   const sp = spreads[cur];
@@ -2719,9 +2737,7 @@ function hitCorner(o,px,py){
 /* ★ 画像を追加する共通ヘルパー（カメラ・画像読込・スタンプで利用） */
 function createObjFromImage(img, cx=W/2, cy=H/2){
   // 各オブジェクト専用の描画キャンバスを持たせる
-  const bmp = document.createElement('canvas');
-  bmp.width  = img.width;
-  bmp.height = img.height;
+  const bmp = newBmpCanvas(img.width, img.height);
   bmp.getContext('2d').drawImage(img, 0, 0);
 
   const o = {
@@ -4111,6 +4127,7 @@ function fitFS(){ fsCanvas.width=window.innerWidth; fsCanvas.height=window.inner
   }
 
   // ★ スナップショットモード OFF
+  flushPendingStroke();
   isRebuildingFromLogForSnapshot = false;
 
   // ---- ここで「startSec〜endSec のあいだに描かれたページ」が
@@ -4743,9 +4760,7 @@ btnDup.onclick=()=>{
   const src = spreads[cur].objs[menuTargetIndex];
 
   // ★ 複製用に bmp をコピー
-  const bmpCopy = document.createElement('canvas');
-  bmpCopy.width  = src.w;
-  bmpCopy.height = src.h;
+  const bmpCopy = newBmpCanvas(src.w, src.h);
   bmpCopy.getContext('2d').drawImage(src.bmp, 0, 0);
 
   // オブジェクトとして追加
@@ -4763,9 +4778,7 @@ btnDup.onclick=()=>{
   sel = spreads[cur].objs.length - 1;
 
   // ★ クリップボードにも独立したコピーを保持
-  const tplBmp = document.createElement('canvas');
-  tplBmp.width  = src.w;
-  tplBmp.height = src.h;
+  const tplBmp = newBmpCanvas(src.w, src.h);
   tplBmp.getContext('2d').drawImage(src.bmp, 0, 0);
   clipboardTemplate = {
     bmp: tplBmp,
@@ -4822,8 +4835,7 @@ if(btnBack)  btnBack.onclick =()=>{ if(menuTargetIndex<0) return; moveObjOrder(m
 function copyObjAt(index){
   const o=spreads[cur].objs[index];
   if(!o) return false;
-  const bmp=document.createElement('canvas');
-  bmp.width=o.w; bmp.height=o.h;
+  const bmp=newBmpCanvas(o.w,o.h);
   bmp.getContext('2d').drawImage(o.bmp,0,0);
   clipboardTemplate={ bmp, w:o.w, h:o.h, scale:o.scale, theta:o.theta,
                       kind:o.kind, cx:o.cx, cy:o.cy };
@@ -4837,8 +4849,7 @@ function pasteFromClipboard(at){
   const tpl=clipboardTemplate;
   if(!tpl) return;
   pushHistoryForCurrentSpread();
-  const bmpCopy=document.createElement('canvas');
-  bmpCopy.width=tpl.w; bmpCopy.height=tpl.h;
+  const bmpCopy=newBmpCanvas(tpl.w,tpl.h);
   bmpCopy.getContext('2d').drawImage(tpl.bmp,0,0);
   let px, py;
   if(at){ px=at.x; py=at.y; }
@@ -4939,6 +4950,7 @@ function setTimelinePlayButtonPlaying(playing){
 function stopPageLogReplay(){
   if (!isPageLogPlaying) return;
   isPageLogPlaying = false;
+  flushPendingStroke();   // ★ 途中で止めても線はオブジェクトとして残す
   if (pageLogReqId != null){
     cancelAnimationFrame(pageLogReqId);
     pageLogReqId = null;
@@ -4963,10 +4975,18 @@ function applyLogEntryForPage(ev){
 
   switch (ev.type) {
     case 'drawStart':
+      // ★ 再生でも「一筆＝1オブジェクト」になるようにキャプチャを開始する
+      flushPendingStroke();
       replayPenColor  = ev.color || replayPenColor;
       replayPenSize   = ev.size  || replayPenSize;
       replayBrushMode = ev.mode  || replayBrushMode;
       replayErasing   = !!ev.erasing;
+      penColor  = replayPenColor;
+      penSize   = replayPenSize;
+      brushMode = replayBrushMode;
+      erasing   = replayErasing;
+      if(ev.tool === 'eraser') erasing = replayErasing = true;
+      if(!erasing) beginStrokeCapture();
       break;
 
     case 'drawMove': {
@@ -4979,17 +4999,28 @@ function applyLogEntryForPage(ev){
       const y1 = ev.y1;
       const x2 = ev.x2;
       const y2 = ev.y2;
-      line(x1, y1, x2, y2);
+      if(erasing){
+        if(strokeActive) flushPendingStroke();
+        line(x1, y1, x2, y2);
+      }else{
+        if(!strokeActive) beginStrokeCapture();
+        const r = expandStrokeBox(x1, y1, x2, y2);
+        line(x1, y1, x2, y2, sc);
+        blitStrokeRegion(r);
+      }
       break;
     }
 
     case 'drawEnd':
+      flushPendingStroke();   // ★ ここで線をオブジェクトにする
       break;
 
     case 'explodeClear':
+      cancelStrokeCapture();
       pc.clearRect(0, 0, W, H);
       spreads[cur].paintOff = null;
       spreads[cur].objs = [];
+      sel = -1;
       redrawObjs();
       break;
 
@@ -5038,9 +5069,11 @@ function rebuildCurrentPageFromTo(startSec, endSec){
   if (!sp) return;
 
   // まずこのページの描画レイヤをまっさらにする
+  cancelStrokeCapture();
   pc.clearRect(0, 0, W, H);
   sp.paintOff = null;
   sp.objs = [];
+  sel = -1;
   redrawObjs();
 
   // 指定範囲のログだけを取り出して時系列順に並べる
@@ -5057,6 +5090,8 @@ function rebuildCurrentPageFromTo(startSec, endSec){
   for (const entry of entries){
     applyLogEntryForPage(entry);
   }
+  // ★ 途中で途切れた線も、ここでオブジェクトにして選べるようにする
+  flushPendingStroke();
 }
 // ★ タイムラインの三角位置に合わせてページを更新
 function updatePageByTimelinePlayhead(){
@@ -5110,9 +5145,11 @@ function replayCurrentPageFromLog(speed = 1, fromSec = 0, toSec = null){
   if (!sp) return;
 
   // --- 1) startT より前の状態を構成 ---
+  cancelStrokeCapture();
   pc.clearRect(0, 0, W, H);
   sp.paintOff = null;
   sp.objs = [];
+  sel = -1;
   redrawObjs();
 
   for (const ev of events){
@@ -5122,6 +5159,7 @@ function replayCurrentPageFromLog(speed = 1, fromSec = 0, toSec = null){
       break;
     }
   }
+  flushPendingStroke();
 
   // --- 2) startT〜endT をアニメ再生 ---
   isPageLogPlaying = true;
@@ -5165,7 +5203,9 @@ function replayCurrentPageFromLog(speed = 1, fromSec = 0, toSec = null){
       // 終了
       isPageLogPlaying = false;
       pageLogReqId = null;
-      setTimelinePlayButtonPlaying(false);  // ★ 追加
+      flushPendingStroke();                 // ★ 最後の線もオブジェクトにする
+      saveCur();                            // ★ 再生後の状態を保存しておく
+      setTimelinePlayButtonPlaying(false);
       return;
     }
     pageLogReqId = requestAnimationFrame(step);
